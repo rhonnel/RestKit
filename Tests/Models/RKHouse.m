@@ -32,8 +32,6 @@
 @dynamic street;
 @dynamic updatedAt;
 @dynamic zip;
-@dynamic owner;
-@dynamic residents;
-@dynamic ownersInChronologicalOrder;
+
 
 @end

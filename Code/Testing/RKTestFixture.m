@@ -19,9 +19,7 @@
 //
 
 #import "RKTestFixture.h"
-#import "RKLog.h"
-#import "RKPathUtilities.h"
-#import "RKMIMETypeSerialization.h"
+#import "NSBundle+RKAdditions.h"
 
 static NSBundle *fixtureBundle = nil;
 
@@ -36,6 +34,8 @@ static NSBundle *fixtureBundle = nil;
 + (void)setFixtureBundle:(NSBundle *)bundle
 {
     NSAssert(bundle != nil, @"Bundle for fixture cannot be nil.");
+    [bundle retain];
+    [fixtureBundle release];
     fixtureBundle = bundle;
 }
 
@@ -44,55 +44,31 @@ static NSBundle *fixtureBundle = nil;
     return [[self fixtureBundle] pathForResource:fixtureName ofType:nil];
 }
 
+#if TARGET_OS_IPHONE
++ (UIImage *)imageWithContentsOfFixture:(NSString *)fixtureName
+{
+    return [[self fixtureBundle] imageWithContentsOfResource:fixtureName withExtension:nil];
+}
+#endif
+
 + (NSString *)stringWithContentsOfFixture:(NSString *)fixtureName
 {
-    NSError *error = nil;
-    NSString *resourcePath = [[self fixtureBundle] pathForResource:fixtureName ofType:nil];
-    if (! resourcePath) {
-        RKLogWarning(@"Failed to locate Fixture named '%@' in bundle %@: File Not Found.", fixtureName, [self fixtureBundle]);
-        return nil;
-    }
-    
-    NSString *fixtureData = [NSString stringWithContentsOfFile:resourcePath encoding:NSUTF8StringEncoding error:&error];
-    if (fixtureData == nil && error) {
-        RKLogWarning(@"Failed to read ");
-    }
-    
-    return fixtureData;
+    return [[self fixtureBundle] stringWithContentsOfResource:fixtureName withExtension:nil encoding:NSUTF8StringEncoding];
 }
 
 + (NSData *)dataWithContentsOfFixture:(NSString *)fixtureName
 {
-    NSString *resourcePath = [[self fixtureBundle] pathForResource:fixtureName ofType:nil];
-    if (! resourcePath) {
-        RKLogWarning(@"Failed to locate Fixture named '%@' in bundle %@: File Not Found.", fixtureName, [self fixtureBundle]);
-        return nil;
-    }
-    
-    return [NSData dataWithContentsOfFile:resourcePath];
+    return [[self fixtureBundle] dataWithContentsOfResource:fixtureName withExtension:nil];
 }
 
 + (NSString *)MIMETypeForFixture:(NSString *)fixtureName
 {
-    NSString *resourcePath = [[self fixtureBundle] pathForResource:fixtureName ofType:nil];
-    if (resourcePath) {
-        return RKMIMETypeFromPathExtension(resourcePath);
-    }
-    
-    return nil;
+    return [[self fixtureBundle] MIMETypeForResource:fixtureName withExtension:nil];
 }
 
 + (id)parsedObjectWithContentsOfFixture:(NSString *)fixtureName
 {
-    NSError *error = nil;
-    NSData *resourceContents = [self dataWithContentsOfFixture:fixtureName];
-    NSAssert(resourceContents, @"Failed to read fixture named '%@'", fixtureName);
-    NSString *MIMEType = [self MIMETypeForFixture:fixtureName];
-    NSAssert(MIMEType, @"Failed to determine MIME type of fixture named '%@'", fixtureName);
-    
-    id object = [RKMIMETypeSerialization objectFromData:resourceContents MIMEType:MIMEType error:&error];
-    NSAssert(object, @"Failed to parse fixture name '%@' in bundle %@. Error: %@", fixtureName, [self fixtureBundle], [error localizedDescription]);
-    return object;
+    return [[self fixtureBundle] parsedObjectWithContentsOfResource:fixtureName withExtension:nil];
 }
 
 @end

@@ -18,25 +18,30 @@
 //  limitations under the License.
 //
 
-#import <XCTest/XCTest.h>
 #import <OCMock/OCMock.h>
 #import <OCMock/NSNotificationCenter+OCMAdditions.h>
 
-// If Kiwi has been imported, skip Hamcrest
-#ifndef KW_VERSION
-    #define HC_SHORTHAND
-    #import "OCHamcrest.h"
-#endif
-
-#define EXP_SHORTHAND
-#import "Expecta.h"
+#define HC_SHORTHAND
+#import <OCHamcrestIOS/OCHamcrestIOS.h>
+#import <SenTestingKit/SenTestingKit.h>
 
 #import <RestKit/RestKit.h>
 #import <RestKit/Testing.h>
+#import <RestKit/RKManagedObjectStore.h>
+
+RKOAuthClient *RKTestNewOAuthClient(RKTestResponseLoader *loader);
 
 /*
- Base class for RestKit test cases. Provides initialization of testing infrastructure.
+ Base class for RestKit test cases. Provides initialization of testing
+ infrastructure.
  */
-@interface RKTestCase : XCTestCase
+@interface RKTestCase : SenTestCase
 @end
 
+@interface SenTestCase (MethodSwizzling)
+- (void)swizzleMethod:(SEL)aOriginalMethod
+              inClass:(Class)aOriginalClass
+           withMethod:(SEL)aNewMethod
+            fromClass:(Class)aNewClass
+         executeBlock:(void (^)(void))aBlock;
+@end

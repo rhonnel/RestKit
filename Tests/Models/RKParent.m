@@ -24,7 +24,6 @@
 
 @implementation RKParent
 
-@dynamic fatheredChildren;
 @dynamic children;
 @dynamic parentID;
 

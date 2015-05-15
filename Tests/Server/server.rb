@@ -1,10 +1,28 @@
 #!/usr/bin/env ruby
 # RestKit Test Server
+
 require 'rubygems'
 require 'bundler/setup'
 require 'sinatra/base'
-require 'sinatra/multi_route'
 require 'json'
+begin
+  require 'ruby-debug'
+  Debugger.start
+rescue LoadError
+  # No debugging...
+end
+
+ENV["DB"] = "rack_oauth2_server"
+
+# Import the RestKit Test server
+$: << File.join(File.expand_path(File.dirname(__FILE__)), 'lib')
+require File.expand_path(File.dirname(__FILE__)) + '/fixtures'
+require 'restkit/network/authentication'
+require 'restkit/network/etags'
+require 'restkit/network/timeout'
+require 'restkit/network/oauth1'
+require 'restkit/network/oauth2'
+require 'restkit/network/redirection'
 
 class Person < Struct.new(:name, :age)
   def to_json(*args)
@@ -13,15 +31,18 @@ class Person < Struct.new(:name, :age)
 end
 
 class RestKitTestServer < Sinatra::Base
-  register Sinatra::MultiRoute
-  
-  self.app_file = __FILE__
+  self.app_file = __FILE__  
 
   configure do
     enable :logging, :dump_errors
     set :public_folder, Proc.new { File.expand_path(File.join(root, '../Fixtures')) }
     set :uploads_path, Proc.new { File.expand_path(File.join(root, '../Fixtures/Uploads')) }
   end
+  
+  use RestKit::Network::Authentication
+  use RestKit::Network::ETags
+  use RestKit::Network::Timeout
+  use RestKit::Network::Redirection
 
   def render_fixture(path, options = {})
     send_file File.join(settings.public_folder, path), options
@@ -45,12 +66,8 @@ class RestKitTestServer < Sinatra::Base
   post '/humans' do
     status 201
     content_type 'application/json'
+    puts "Got params: #{params.inspect}"
     {:human => {:name => "My Name", :id => 1, :website => "http://restkit.org/"}}.to_json
-  end
-
-  post '/humans/and_cats' do
-    content_type 'application/json'
-    render_fixture('/JSON/humans/and_cats.json', :status => 201)
   end
 
   post '/humans/fail' do
@@ -59,9 +76,9 @@ class RestKitTestServer < Sinatra::Base
   end
 
   get '/humans/1' do
-    etag('2cdd0a2b329541d81e82ab20aff6281b')
     status 200
     content_type 'application/json'
+    puts "Got params: #{params.inspect}"
     {:human => {:name => "Blake Watters", :id => 1}}.merge(params).to_json
   end
 
@@ -69,23 +86,6 @@ class RestKitTestServer < Sinatra::Base
     status 200
     content_type 'application/json'
     "{}"
-  end
-
-  delete '/humans/204' do
-    status 204
-    content_type 'application/json'
-  end
-
-  delete '/humans/empty' do
-    status 200
-    content_type 'application/json'
-    ""
-  end
-
-  delete '/humans/success' do
-    status 200
-    content_type 'application/json'
-    {:human => {:status => 'OK'}}.to_json
   end
 
   post '/echo_params' do
@@ -99,7 +99,7 @@ class RestKitTestServer < Sinatra::Base
     content_type 'application/json'
     "".to_json
   end
-
+  
   get '/204' do
     status 204
     content_type 'application/json'
@@ -114,14 +114,8 @@ class RestKitTestServer < Sinatra::Base
 
   get '/404' do
     status 404
-    content_type 'application/json'
-    { :error => "Resource not found." }.to_json
-  end
-  
-  get '/410' do
-    status 410
-    content_type 'application/json'
-    { :error => "Resource is gone." }.to_json
+    content_type 'text/html'
+    "File Not Found"
   end
 
   get '/503' do
@@ -165,7 +159,7 @@ class RestKitTestServer < Sinatra::Base
     content_type 'application/json'
     params.to_json
   end
-
+  
   post '/timeout' do
     sleep 2
     status 200
@@ -196,13 +190,8 @@ class RestKitTestServer < Sinatra::Base
     render_fixture('/JSON/errors.json', :status => 500)
   end
 
-  get '/500' do
-    status 500
-    content_type 'application/json'
-  end
-
   # Expects an uploaded 'file' param
-  post '/api/upload/' do
+  post '/upload' do
     unless params['file']
       status 500
       return "No file parameter was provided"
@@ -212,8 +201,7 @@ class RestKitTestServer < Sinatra::Base
       f.write(params['file'][:tempfile].read)
     end
     status 200
-    content_type 'application/json'
-    { :name => "Blake" }.to_json
+    "Uploaded successfully to '#{upload_path}'"
   end
 
   # Return 200 after a delay
@@ -232,6 +220,8 @@ class RestKitTestServer < Sinatra::Base
     total_entries = 6
     current_page = params[:page].to_i
     entries = []
+
+    puts "Params are: #{params.inspect}. CurrentPage = #{current_page}"
 
     case current_page
       when 1
@@ -252,20 +242,12 @@ class RestKitTestServer < Sinatra::Base
     end
 
     {:per_page => per_page, :total_entries => total_entries,
-     :current_page => current_page, :entries => entries, :total_pages => 3}.to_json
+     :current_page => current_page, :entries => entries}.to_json
   end
-
-  get '/paginate/' do
-    status 200
-    content_type 'application/json'
-    {:per_page => 10, :total_entries => 0,
-     :current_page => 1, :entries => [], :total_pages => 0}.to_json
-  end
-
+  
   get '/coredata/etag' do
     content_type 'application/json'
     tag = '2cdd0a2b329541d81e82ab20aff6281b'
-    cache_control(:private, :must_revalidate, :max_age => 0)
     if tag == request.env["HTTP_IF_NONE_MATCH"]
       status 304
       ""
@@ -273,84 +255,6 @@ class RestKitTestServer < Sinatra::Base
       etag(tag)
       render_fixture '/JSON/humans/all.json'
     end
-  end
-
-  get '/object_manager/cancel' do
-    sleep 0.05
-    status 204
-  end
-
-  get '/object_manager/:objectID/cancel' do
-    sleep 0.05
-    status 204
-  end
-
-  get '/304' do
-    status 304
-  end
-
-  route :get, :head, '/no_content_type/:code' do
-    response.header['Content-Type'] = ''
-    status params[:code]
-    ''
-  end
-
-  post '/422' do
-    status 422
-    content_type 'application/json'
-    { :error => "Unprocessable Entity." }.to_json
-  end
-
-  delete '/humans/1234/whitespace' do
-    content_type 'application/json'
-    status 200
-    ' '
-  end
-
-  post '/ComplexUser' do
-    content_type 'application/json'
-    render_fixture('/JSON/ComplexNestedUser.json', :status => 200)
-  end
-
-  get '/posts.json' do
-    content_type 'application/json'
-    { :posts => [{:title => 'Post Title', :body => 'Some body.', :tags => [{ :name => 'development' }, { :name => 'restkit' }] }] }.to_json
-  end
-
-  post '/posts.json' do
-    content_type 'application/json'
-    { :post => { :title => 'Post Title', :body => 'Some body.', :tags => [{ :name => 'development' }, { :name => 'restkit' }] } }.to_json
-  end
-
-  get '/posts_with_invalid.json' do
-    content_type 'application/json'
-    { :posts => [{:title => 'Post Title', :body => 'Some body.'}, {:title => '', :body => 'Some body.'} ] }.to_json
-  end
-
-  get '/posts/:post_id/tags' do
-    content_type 'application/json'
-    [{ :name => 'development' }, { :name => 'restkit' }].to_json
-  end
-
-  post '/tags' do
-    content_type 'application/json'
-    [{ :name => 'development' }, { :name => 'restkit' }].to_json
-  end
-
-  get '/user' do
-    content_type 'application/json'
-    render_fixture('/JSON/user.json', :status => 200)
-  end
-
-  get '/user_ids' do
-    content_type 'application/json'
-    { :user_ids => [1, 2, 3] }.to_json
-  end
-
-  get '/corrupted/json' do
-      content_type 'application/json'
-      status 200
-      'no json here'
   end
 
   # start the server if ruby file executed directly

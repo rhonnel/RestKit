@@ -9,7 +9,6 @@
       "type": "Party",
       "event_id": "EV4432",
       "location": "Your House",
-      "summary": "Hootnanny",
-      "vips": [ { "id": 31337, "name": "blake" } ]
+      "summary": "Hootnanny"
     }
 ]

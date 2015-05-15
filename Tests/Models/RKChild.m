@@ -28,7 +28,5 @@
 @dynamic fatherID;
 @dynamic father;
 @dynamic mother;
-@dynamic friends;
-@dynamic friendIDs;
 
 @end

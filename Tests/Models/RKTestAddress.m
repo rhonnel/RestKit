@@ -17,7 +17,7 @@
 
 + (RKTestAddress *)address
 {
-    return [self new];
+    return [[self new] autorelease];
 }
 
 // isEqual: is consulted by the mapping operation

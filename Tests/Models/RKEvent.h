@@ -19,13 +19,15 @@
 //
 
 
-#import <CoreData/CoreData.h>
+#import "NSManagedObject+ActiveRecord.h"
 
-@interface RKEvent : NSManagedObject
+@interface RKEvent : NSManagedObject {
 
-@property (nonatomic, strong) NSString *eventID;
-@property (nonatomic, strong) NSString *eventType;
-@property (nonatomic, strong) NSString *location;
-@property (nonatomic, strong) NSString *summary;
+}
+
+@property (nonatomic, retain) NSString *eventID;
+@property (nonatomic, retain) NSString *eventType;
+@property (nonatomic, retain) NSString *location;
+@property (nonatomic, retain) NSString *summary;
 
 @end

@@ -20,171 +20,155 @@
 
 #import "RKTestEnvironment.h"
 #import "RKManagedObjectLoader.h"
-#import "RKEntityMapping.h"
+#import "RKManagedObjectMapping.h"
 #import "RKHuman.h"
 #import "RKCat.h"
-#import "NSManagedObject+RKAdditions.h"
+#import "NSManagedObject+ActiveRecord.h"
 #import "RKObjectMappingProvider+CoreData.h"
 
-@interface RKManagedObjectLoaderTest : RKTestCase
+@interface RKManagedObjectLoaderTest : RKTestCase {
+
+}
+
 @end
 
 @implementation RKManagedObjectLoaderTest
 
 - (void)testShouldDeleteObjectFromLocalStoreOnDELETE
 {
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
+    RKManagedObjectStore *store = [RKTestFactory managedObjectStore];
+    [store save:nil];
     RKObjectManager *objectManager = [RKTestFactory objectManager];
-    objectManager.managedObjectStore = managedObjectStore;
-    
-    RKHuman *human = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
+    objectManager.objectStore = store;
+    RKHuman *human = [RKHuman object];
     human.name = @"Blake Watters";
     human.railsID = [NSNumber numberWithInt:1];
-    [objectManager.managedObjectStore.persistentStoreManagedObjectContextContext save:nil];
+    [objectManager.objectStore save:nil];
 
-    assertThat(objectManager.managedObjectStore.persistentStoreManagedObjectContextContext, is(equalTo(managedObjectStore.persistentStoreManagedObjectContextContext)));
+    assertThat(objectManager.objectStore.primaryManagedObjectContext, is(equalTo(store.primaryManagedObjectContext)));
 
-    RKEntityMapping *mapping = [RKEntityMapping mappingForEntityForName:@"Human" inManagedObjectStore:managedObjectStore];
+    RKManagedObjectMapping *mapping = [RKManagedObjectMapping mappingForClass:[RKHuman class] inManagedObjectStore:store];
     RKTestResponseLoader *responseLoader = [RKTestResponseLoader responseLoader];
     RKURL *URL = [objectManager.baseURL URLByAppendingResourcePath:@"/humans/1"];
-    RKManagedObjectLoader *objectLoader = [[RKManagedObjectLoader alloc] initWithURL:URL mappingProvider:objectManager.mappingProvider];
-    objectLoader.managedObjectContext = managedObjectStore.persistentStoreManagedObjectContextContext;
-    objectLoader.mainQueueManagedObjectContext = managedObjectStore.mainQueueManagedObjectContext;
+    RKManagedObjectLoader *objectLoader = [RKManagedObjectLoader loaderWithURL:URL mappingProvider:objectManager.mappingProvider objectStore:store];
     objectLoader.delegate = responseLoader;
     objectLoader.method = RKRequestMethodDELETE;
     objectLoader.objectMapping = mapping;
     objectLoader.targetObject = human;
     [objectLoader send];
-    responseLoader.timeout = 60;
     [responseLoader waitForResponse];
-    
-    assertThatBool([human hasBeenDeleted], equalToBool(YES));
+    assertThatBool([human isDeleted], equalToBool(YES));
 }
 
 - (void)testShouldLoadAnObjectWithAToOneRelationship
 {
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
+    RKManagedObjectStore *store = [RKTestFactory managedObjectStore];
     RKObjectManager *objectManager = [RKTestFactory objectManager];
-    objectManager.managedObjectStore = managedObjectStore;
+    objectManager.objectStore = store;
 
-    RKObjectMapping *humanMapping = [RKEntityMapping mappingForEntityForName:@"Human" inManagedObjectStore:managedObjectStore];
-    [humanMapping addAttributeMappingsFromArray:@[@"name"]];
-    RKObjectMapping *catMapping = [RKEntityMapping mappingForEntityForName:@"Cat" inManagedObjectStore:managedObjectStore];
-    [catMapping addAttributeMappingsFromArray:@[@"name"]];
-    [humanMapping addPropertyMapping:[RKRelationshipMapping relationshipMappingFromKeyPath:@"favorite_cat" toKeyPath:@"favoriteCat" withMapping:catMapping]];;
+    RKObjectMapping *humanMapping = [RKManagedObjectMapping mappingForClass:[RKHuman class] inManagedObjectStore:store];
+    [humanMapping mapAttributes:@"name", nil];
+    RKObjectMapping *catMapping = [RKManagedObjectMapping mappingForClass:[RKCat class] inManagedObjectStore:store];
+    [catMapping mapAttributes:@"name", nil];
+    [humanMapping mapKeyPath:@"favorite_cat" toRelationship:@"favoriteCat" withMapping:catMapping];
     [objectManager.mappingProvider setMapping:humanMapping forKeyPath:@"human"];
     RKTestResponseLoader *responseLoader = [RKTestResponseLoader responseLoader];
     RKURL *URL = [objectManager.baseURL URLByAppendingResourcePath:@"/JSON/humans/with_to_one_relationship.json"];
-    RKManagedObjectLoader *objectLoader = [[[RKManagedObjectLoader alloc] initWithURL:URL mappingProvider:objectManager.mappingProvider] autorelease];
-    objectLoader.managedObjectContext = managedObjectStore.persistentStoreManagedObjectContextContext;
-    objectLoader.mainQueueManagedObjectContext = managedObjectStore.mainQueueManagedObjectContext;
+    RKManagedObjectLoader *objectLoader = [RKManagedObjectLoader loaderWithURL:URL mappingProvider:objectManager.mappingProvider objectStore:store];
     objectLoader.delegate = responseLoader;
     [objectLoader send];
-    responseLoader.timeout = 50;
     [responseLoader waitForResponse];
     RKHuman *human = [responseLoader.objects lastObject];
     assertThat(human, isNot(nilValue()));
-    assertThat(human.name, is(equalTo(@"Blake Watters")));
     assertThat(human.favoriteCat, isNot(nilValue()));
     assertThat(human.favoriteCat.name, is(equalTo(@"Asia")));
 }
 
 - (void)testShouldDeleteObjectsMissingFromPayloadReturnedByObjectCache
 {
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
-    RKEntityMapping *humanMapping = [RKEntityMapping mappingForEntityForName:@"Human"
-                                                                       inManagedObjectStore:managedObjectStore];
-    [humanMapping addPropertyMapping:[RKAttributeMapping attributeMappingFromKeyPath:@"id" toKeyPath:@"railsID"]];
-    [humanMapping addAttributeMappingsFromArray:@[@"name"]];
-    humanmapping.identificationAttributes = @[ @"railsID" ];
+    RKManagedObjectStore *store = [RKTestFactory managedObjectStore];
+    RKManagedObjectMapping *humanMapping = [RKManagedObjectMapping mappingForEntityWithName:@"RKHuman"
+                                                                       inManagedObjectStore:store];
+    [humanMapping mapKeyPath:@"id" toAttribute:@"railsID"];
+    [humanMapping mapAttributes:@"name", nil];
+    humanMapping.primaryKeyAttribute = @"railsID";
     humanMapping.rootKeyPath = @"human";
 
     // Create 3 objects, we will expect 2 after the load
-    NSError *error;
-    NSFetchRequest *fetchRequest = [NSFetchRequest fetchRequestWithEntityName:@"Human"];
-    NSUInteger count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-
-    assertThatUnsignedInteger(count, is(equalToInt(0)));
-    RKHuman *blake = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
+    [RKHuman truncateAll];
+    assertThatUnsignedInteger([RKHuman count:nil], is(equalToInt(0)));
+    RKHuman *blake = [RKHuman createEntity];
     blake.railsID = [NSNumber numberWithInt:123];
-    RKHuman *other = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
+    RKHuman *other = [RKHuman createEntity];
     other.railsID = [NSNumber numberWithInt:456];
-    RKHuman *deleteMe = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
+    RKHuman *deleteMe = [RKHuman createEntity];
     deleteMe.railsID = [NSNumber numberWithInt:9999];
-    [managedObjectStore.persistentStoreManagedObjectContextContext save:nil];
-
-    count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-    assertThatUnsignedInteger(count, is(equalToInt(3)));
+    [store save:nil];
+    assertThatUnsignedInteger([RKHuman count:nil], is(equalToInt(3)));
 
     RKObjectManager *objectManager = [RKTestFactory objectManager];
     [objectManager.mappingProvider setObjectMapping:humanMapping
-                             forpathPattern:@"/JSON/humans/all.json"
+                             forResourcePathPattern:@"/JSON/humans/all.json"
                               withFetchRequestBlock:^ (NSString *resourcePath) {
-                                  return fetchRequest;
+                                  return [RKHuman fetchRequest];
                               }];
-    objectManager.managedObjectStore = managedObjectStore;
+    objectManager.objectStore = store;
 
     RKTestResponseLoader *responseLoader = [RKTestResponseLoader responseLoader];
     responseLoader.timeout = 25;
     RKURL *URL = [objectManager.baseURL URLByAppendingResourcePath:@"/JSON/humans/all.json"];
-    RKManagedObjectLoader *objectLoader = [[[RKManagedObjectLoader alloc] initWithURL:URL mappingProvider:objectManager.mappingProvider] autorelease];
-    objectLoader.managedObjectContext = managedObjectStore.persistentStoreManagedObjectContextContext;
-    objectLoader.mainQueueManagedObjectContext = managedObjectStore.mainQueueManagedObjectContext;
+    RKManagedObjectLoader *objectLoader = [RKManagedObjectLoader loaderWithURL:URL mappingProvider:objectManager.mappingProvider objectStore:store];
     objectLoader.delegate = responseLoader;
     [objectLoader send];
     [responseLoader waitForResponse];
 
-    count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-    assertThatUnsignedInteger(count, is(equalToInt(2)));
+    assertThatUnsignedInteger([RKHuman count:nil], is(equalToInt(2)));
     assertThatBool([blake isDeleted], is(equalToBool(NO)));
     assertThatBool([other isDeleted], is(equalToBool(NO)));
-    assertThatBool([deleteMe hasBeenDeleted], is(equalToBool(YES)));
+    assertThatBool([deleteMe isDeleted], is(equalToBool(YES)));
 }
 
 - (void)testShouldNotAssertDuringObjectMappingOnSynchronousRequest
 {
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
+    RKManagedObjectStore *store = [RKTestFactory managedObjectStore];
     RKObjectManager *objectManager = [RKTestFactory objectManager];
-    objectManager.managedObjectStore = managedObjectStore;
+    objectManager.objectStore = store;
 
-    RKObjectMapping *mapping = [RKEntityMapping mappingForEntityForName:@"Human" inManagedObjectStore:managedObjectStore];
+    RKObjectMapping *mapping = [RKManagedObjectMapping mappingForClass:[RKHuman class] inManagedObjectStore:store];
     RKManagedObjectLoader *objectLoader = [objectManager loaderWithResourcePath:@"/humans/1"];
     objectLoader.objectMapping = mapping;
     RKResponse *response = [objectLoader sendSynchronously];
 
-    NSUInteger humanCount = [managedObjectStore.persistentStoreManagedObjectContextContext countForEntityForName:@"Human" predicate:nil error:nil];
-    assertThatUnsignedInteger(humanCount, is(equalToInt(1)));
+    NSArray *humans = [RKHuman findAll];
+    assertThatUnsignedInteger([humans count], is(equalToInt(1)));
     assertThatInteger(response.statusCode, is(equalToInt(200)));
 }
 
 - (void)testShouldSkipObjectMappingOnRequestCacheHitWhenObjectCachePresent
 {
-    [[NSURLCache sharedURLCache] removeAllCachedResponses];
+    [RKTestFactory clearCacheDirectory];
 
     RKObjectManager *objectManager = [RKTestFactory objectManager];
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
-    objectManager.managedObjectStore = managedObjectStore;
-    RKEntityMapping *humanMapping = [RKEntityMapping mappingForEntityForName:@"Human" inManagedObjectStore:managedObjectStore];
-    [humanMapping addPropertyMapping:[RKAttributeMapping attributeMappingFromKeyPath:@"id" toKeyPath:@"railsID"]];
-    [humanMapping addAttributeMappingsFromArray:@[@"name"]];
-    humanmapping.identificationAttributes = @[ @"railsID" ];
+    RKManagedObjectStore *objectStore = [RKTestFactory managedObjectStore];
+    objectManager.objectStore = objectStore;
+    RKManagedObjectMapping *humanMapping = [RKManagedObjectMapping mappingForEntityWithName:@"RKHuman" inManagedObjectStore:objectStore];
+    [humanMapping mapKeyPath:@"id" toAttribute:@"railsID"];
+    [humanMapping mapAttributes:@"name", nil];
+    humanMapping.primaryKeyAttribute = @"railsID";
     humanMapping.rootKeyPath = @"human";
 
-    NSError *error;
-    NSFetchRequest *fetchRequest = [NSFetchRequest fetchRequestWithEntityName:@"Human"];
-    NSUInteger count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-    assertThatInteger(count, is(equalToInteger(0)));
-    RKHuman *blake = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
+    [RKHuman truncateAll];
+    assertThatInteger([RKHuman count:nil], is(equalToInteger(0)));
+    RKHuman *blake = [RKHuman createEntity];
     blake.railsID = [NSNumber numberWithInt:123];
-    RKHuman *other = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
+    RKHuman *other = [RKHuman createEntity];
     other.railsID = [NSNumber numberWithInt:456];
-    [managedObjectStore.persistentStoreManagedObjectContextContext save:nil];
-    count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-    assertThatInteger(count, is(equalToInteger(2)));
+    [objectStore save:nil];
+    assertThatInteger([RKHuman count:nil], is(equalToInteger(2)));
 
     [objectManager.mappingProvider setMapping:humanMapping forKeyPath:@"human"];
-    [objectManager.mappingProvider setObjectMapping:humanMapping forpathPattern:@"/coredata/etag" withFetchRequestBlock:^NSFetchRequest *(NSString *resourcePath) {
-        return fetchRequest;
+    [objectManager.mappingProvider setObjectMapping:humanMapping forResourcePathPattern:@"/coredata/etag" withFetchRequestBlock:^NSFetchRequest *(NSString *resourcePath) {
+        return [RKHuman fetchRequest];
     }];
 
     {
@@ -198,8 +182,7 @@
         [responseLoader waitForResponse];
 
         STAssertNoThrow([mockLoader verify], nil);
-        count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-        assertThatInteger(count, is(equalToInteger(2)));
+        assertThatInteger([RKHuman count:nil], is(equalToInteger(2)));
         assertThatBool([responseLoader wasSuccessful], is(equalToBool(YES)));
         assertThatBool([responseLoader.response wasLoadedFromCache], is(equalToBool(NO)));
         assertThatInteger([responseLoader.objects count], is(equalToInteger(2)));
@@ -215,8 +198,7 @@
         [responseLoader waitForResponse];
 
         STAssertNoThrow([mockLoader verify], nil);
-        count = [managedObjectStore.persistentStoreManagedObjectContextContext countForFetchRequest:fetchRequest error:&error];
-        assertThatInteger(count, is(equalToInteger(2)));
+        assertThatInteger([RKHuman count:nil], is(equalToInteger(2)));
         assertThatBool([responseLoader wasSuccessful], is(equalToBool(YES)));
         assertThatBool([responseLoader.response wasLoadedFromCache], is(equalToBool(YES)));
         assertThatInteger([responseLoader.objects count], is(equalToInteger(2)));
@@ -240,13 +222,14 @@
 
 - (void)testThatObjectLoadedDidFinishLoadingIsCalledOnStoreSaveFailure
 {
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
+    RKManagedObjectStore *store = [RKTestFactory managedObjectStore];
     RKObjectManager *objectManager = [RKTestFactory objectManager];
-    objectManager.managedObjectStore = managedObjectStore;
-    id mockStore = [OCMockObject partialMockForObject:managedObjectStore];
-    [[[mockStore stub] andReturnValue:@NO] save:[OCMArg anyPointer]];
+    objectManager.objectStore = store;
+    id mockStore = [OCMockObject partialMockForObject:store];
+    BOOL success = NO;
+    [[[mockStore stub] andReturnValue:OCMOCK_VALUE(success)] save:[OCMArg anyPointer]];
 
-    RKObjectMapping *mapping = [RKEntityMapping mappingForEntityForName:@"Human" inManagedObjectStore:managedObjectStore];
+    RKObjectMapping *mapping = [RKManagedObjectMapping mappingForClass:[RKHuman class] inManagedObjectStore:store];
     RKManagedObjectLoader *objectLoader = [objectManager loaderWithResourcePath:@"/humans/1"];
     objectLoader.objectMapping = mapping;
 
@@ -257,28 +240,6 @@
     [objectLoader sendAsynchronously];
     [responseLoader waitForResponse];
     [mockResponseLoader verify];
-}
-
-- (void)testObtainingPermanentObjectIDForSourceObjectOnSuccess
-{
-    RKManagedObjectStore *managedObjectStore = [RKTestFactory managedObjectStore];
-    RKObjectManager *objectManager = [RKTestFactory objectManager];
-    objectManager.managedObjectStore = managedObjectStore;
-    RKObjectMapping *mapping = [RKEntityMapping mappingForEntityForName:@"Human" inManagedObjectStore:managedObjectStore];
-    RKManagedObjectLoader *objectLoader = [objectManager loaderWithResourcePath:@"/humans/1"];
-    objectLoader.objectMapping = mapping;
-    objectLoader.serializationMapping = [RKObjectMapping serializationMapping];
-    [objectLoader.serializationMapping addAttributeMappingsFromArray:@[@"name"]];
-    
-    RKHuman *human = [NSEntityDescription insertNewObjectForEntityForName:@"Human" inManagedObjectContext:managedObjectStore.persistentStoreManagedObjectContextContext];
-    assertThatBool([human.objectID isTemporaryID], is(equalToBool(YES)));
-    objectLoader.sourceObject = human;
-    objectLoader.method = RKRequestMethodGET;
-    RKTestResponseLoader *responseLoader = [RKTestResponseLoader responseLoader];
-    objectLoader.delegate = responseLoader;
-    [objectLoader send];
-    [responseLoader waitForResponse];
-    assertThatBool([human.objectID isTemporaryID], is(equalToBool(NO)));
 }
 
 @end

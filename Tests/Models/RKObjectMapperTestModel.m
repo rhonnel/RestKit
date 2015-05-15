@@ -21,4 +21,9 @@
 #import "RKObjectMapperTestModel.h"
 
 @implementation RKObjectMapperTestModel
+
+@synthesize name = _name;
+@synthesize age = _age;
+@synthesize createdAt = _createdAt;
+
 @end

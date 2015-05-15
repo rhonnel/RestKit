@@ -9,21 +9,28 @@
 #import "RKTestUser.h"
 #import "RKLog.h"
 
-@implementation RKTestCoordinate
-
-- (BOOL)isEqual:(id)object
-{
-    if (! [object isKindOfClass:[RKTestCoordinate class]]) return NO;
-    return [object latitude] == self.latitude && [object longitude] == self.longitude;
-}
-
-@end
-
 @implementation RKTestUser
+
+@synthesize userID = _userID;
+@synthesize name = _name;
+@synthesize birthDate = _birthDate;
+@synthesize favoriteDate = _favoriteDate;
+@synthesize favoriteColors = _favoriteColors;
+@synthesize addressDictionary = _addressDictionary;
+@synthesize website = _website;
+@synthesize isDeveloper = _isDeveloper;
+@synthesize luckyNumber = _luckyNumber;
+@synthesize weight = _weight;
+@synthesize interests = _interests;
+@synthesize country = _country;
+@synthesize address = _address;
+@synthesize friends = _friends;
+@synthesize friendsSet = _friendsSet;
+@synthesize friendsOrderedSet = _friendsOrderedSet;
 
 + (RKTestUser *)user
 {
-    return [self new];
+    return [[self new] autorelease];
 }
 
 // isEqual: is consulted by the mapping operation
@@ -35,7 +42,7 @@
             // No primary key -- consult superclass
             return [super isEqual:object];
         } else {
-            return self.userID && [[(RKTestUser *)object userID] isEqualToNumber:self.userID];
+            return [[(RKTestUser *)object userID] isEqualToNumber:self.userID];
         }
     }
 

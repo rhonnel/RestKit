@@ -8,31 +8,16 @@
 
 #import <CoreData/CoreData.h>
 
-@class RKManagedObjectStore, RKEntityMapping;
+@class RKManagedObjectStore, RKManagedObjectMapping;
 
 /**
  Provides extensions to NSManagedObject for various common tasks.
  */
 @interface NSManagedObject (RKAdditions)
 
-///--------------------------------------
-/// @name Inspecting Managed Object State
-///--------------------------------------
-
 /**
- Determines if the receiver has been deleted from the persistent store
- and removed from the object graph.
-
- Unlike isDeleted, will return YES after a save event or if the managed object was deleted
- in another managed object context that was then merged to the persistent store.
-
- @return YES if the object has been deleted from the persistent store, else NO.
+ The receiver's managed object store.
  */
-@property (nonatomic, readonly) BOOL hasBeenDeleted;
-
-/**
- * Returns YES when an object has not been saved to the managed object context yet
- */
-@property (nonatomic, readonly) BOOL isNew;
+- (RKManagedObjectStore *)managedObjectStore;
 
 @end
